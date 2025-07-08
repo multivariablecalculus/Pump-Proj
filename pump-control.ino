@@ -1,17 +1,19 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
-const char* ssid = "";
-const char* password = "";
+const char* ssid = "Pump_Controller";
+const char* password = "12345678";
 
 ESP8266WebServer server(80);
 
 const int pumpRelayPin = D1;
-const int topProbePin = D2;
-const int bottomProbePin = D3;
+const int topProbePin = D6;
+const int bottomProbePin = D5;
 
-bool PumpAuto = false;
+bool PumpAuto = true;
 bool PumpState = false;
+int lastTop = -1;
+int lastBottom = -1;
 
 void setup() {
   delay(500);
@@ -19,22 +21,17 @@ void setup() {
   Serial.println("\n\n[BOOT] Booting...");
 
   pinMode(pumpRelayPin, OUTPUT);
-  pinMode(topProbePin, INPUT);
-  pinMode(bottomProbePin, INPUT);
+  pinMode(topProbePin, INPUT_PULLUP);
+  pinMode(bottomProbePin, INPUT_PULLUP);
   digitalWrite(pumpRelayPin, LOW);
 
-  Serial.print("[WIFI] Connecting to: ");
+  Serial.print("[AP] Starting Access Point: ");
   Serial.println(ssid);
-  WiFi.begin(ssid, password);
+  WiFi.softAP(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\n[WIFI] Connected!");
-  Serial.print("[WIFI] IP address: ");
-  Serial.println(WiFi.localIP());
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("[AP] IP Address: ");
+  Serial.println(myIP);
 
   server.on("/", handleRoot);
   server.on("/on", handlePumpOn);
@@ -50,10 +47,19 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  if (PumpAuto) {
-    bool top = digitalRead(topProbePin);
-    bool bottom = digitalRead(bottomProbePin);
+  bool top = !digitalRead(topProbePin);
+  bool bottom = !digitalRead(bottomProbePin);
 
+  if (top != lastTop || bottom != lastBottom) {
+    Serial.print("[STATUS] TOP (D6): ");
+    Serial.print(top);
+    Serial.print(" | BOTTOM (D5): ");
+    Serial.println(bottom);
+    lastTop = top;
+    lastBottom = bottom;
+  }
+
+  if (PumpAuto) {
     if (top && bottom) {
       pumpControl(false);
     } else if (!bottom) {
@@ -95,8 +101,8 @@ void handleMan() {
 }
 
 void handleStatus() {
-  bool top = digitalRead(topProbePin);
-  bool bottom = digitalRead(bottomProbePin);
+  bool top = !digitalRead(topProbePin);
+  bool bottom = !digitalRead(bottomProbePin);
 
   String status = String(top) + String(bottom);
   server.send(200, "text/plain", status);
